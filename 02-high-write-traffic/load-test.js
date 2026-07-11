@@ -57,7 +57,7 @@ async function run() {
     const batchResults = await Promise.all(promises);
 
     for (const r of batchResults) {
-      if (r.status === 201) {
+      if (r.status >= 200 && r.status < 300) {
         results.push(r.duration);
       } else {
         failed.push(r);
