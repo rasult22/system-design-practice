@@ -19,6 +19,16 @@ services:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
 
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    ports:
+      - "8123:8123"
+    environment:
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+      CLICKHOUSE_PASSWORD: ""
+    volumes:
+      - chdata:/var/lib/clickhouse
+
   app:
     build: .
     ports:
@@ -30,9 +40,12 @@ services:
       DB_PASSWORD: postgres
       DB_NAME: eventsdb
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      CLICKHOUSE_URL: http://clickhouse:8123
     depends_on:
       - db
       - rabbitmq
-
+      - clickhouse
+      
 volumes:
   pgdata:
+  chdata:

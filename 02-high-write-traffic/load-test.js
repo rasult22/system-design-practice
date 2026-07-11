@@ -1,7 +1,8 @@
 const TOTAL = 20000;
-const CONCURRENCY = 1000;
-const URL = 'http://localhost:3000/events';
-const HEALTH_URL = 'http://localhost:3000/events/count';
+const CONCURRENCY = 500;
+const MODE = process.argv[2] || 'queue';
+const URL = MODE === 'queue' ? 'http://localhost:3000/events' : 'http://localhost:3000/events/clickhouse';
+const HEALTH_URL = MODE === 'queue' ? 'http://localhost:3000/events/count' : 'http://localhost:3000/events/clickhouse/count';
 const HEALTH_INTERVAL = 500;
 
 async function sendEvent(i) {
@@ -36,6 +37,7 @@ async function probeHealth(readings) {
 
 async function run() {
   console.log(`\nНагрузочный тест: ${TOTAL} запросов, concurrency=${CONCURRENCY}`);
+  console.log(`\nРежим: ${MODE.toUpperCase()}`);
   console.log(`Параллельно замеряем GET /events/count каждые ${HEALTH_INTERVAL}ms\n`);
 
   // замер без нагрузки

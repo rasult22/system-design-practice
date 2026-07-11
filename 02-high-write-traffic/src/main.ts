@@ -13,6 +13,14 @@ async function bootstrap() {
       queueOptions: { durable: true }
     }
   });
+  app.connectMicroservice<MicroserviceOptions>({
+    transport: Transport.RMQ,
+    options: {
+      urls: [process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672'],
+      queue: 'events_clickhouse_queue',
+      queueOptions: { durable: true },
+    },
+  });
   await app.startAllMicroservices();
   await app.listen(process.env.PORT ?? 3000);
 }
