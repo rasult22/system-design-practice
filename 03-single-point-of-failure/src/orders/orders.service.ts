@@ -2,8 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Order, OrderStatus } from './order.entity';
-import { Product } from './product.entity';
-import { PaymentsService } from './payments.service';
+import { Product } from '../products/product.entity';
+import { PaymentsService } from '../payments/payments.service';
 
 @Injectable()
 export class OrdersService {

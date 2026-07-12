@@ -1,14 +1,11 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Product } from './product.entity';
-import { Order } from './order.entity';
-import { Payment } from './payment.entity';
-import { ProductsController } from './products.controller';
-import { ProductsService } from './products.service';
-import { OrdersController } from './orders.controller';
-import { OrdersService } from './orders.service';
-import { PaymentsController } from './payments.controller';
-import { PaymentsService } from './payments.service';
+import { Product } from './products/product.entity';
+import { Order } from './orders/order.entity';
+import { Payment } from './payments/payment.entity';
+import { ProductsModule } from './products/products.module';
+import { OrdersModule } from './orders/orders.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -22,9 +19,9 @@ import { PaymentsService } from './payments.service';
       entities: [Product, Order, Payment],
       synchronize: true,
     }),
-    TypeOrmModule.forFeature([Product, Order, Payment]),
+    ProductsModule,
+    OrdersModule,
+    PaymentsModule,
   ],
-  controllers: [ProductsController, OrdersController, PaymentsController],
-  providers: [ProductsService, OrdersService, PaymentsService],
 })
 export class AppModule {}
