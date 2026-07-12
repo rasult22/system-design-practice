@@ -6,7 +6,11 @@ async function request(label, url, opts) {
     const res = await fetch(url, opts);
     const ms = Date.now() - start;
     const ok = res.ok ? '✅' : '❌';
+    const data = await res.json().catch(() => null);
     console.log(`  ${ok} ${label} — ${res.status} (${ms}ms)`);
+    if (data && opts?.method === 'POST' && res.ok) {
+      console.log(`     → Заказ #${data.order?.id} [${data.order?.status}], платёж: ${data.payment?.status}`);
+    }
     return res.ok;
   } catch (e) {
     console.log(`  💀 ${label} — ${e.cause?.code || e.message}`);
@@ -17,24 +21,26 @@ async function request(label, url, opts) {
 async function testAllEndpoints(phase) {
   console.log(`\n=== ${phase} ===`);
   const results = await Promise.all([
-    request('GET  /products (поиск товаров)', `${BASE}/products`),
-    request('GET  /orders   (история заказов)', `${BASE}/orders`),
-    request('POST /orders   (покупка)', `${BASE}/orders`, {
+    request('GET  /products  (каталог товаров)', `${BASE}/products`),
+    request('GET  /orders    (мои покупки)', `${BASE}/orders`),
+    request('GET  /payments  (история платежей)', `${BASE}/payments`),
+    request('POST /orders    (покупка + оплата)', `${BASE}/orders`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productId: 1, quantity: 1 }),
+      body: JSON.stringify({ productId: 1, quantity: 2 }),
     }),
   ]);
 
   const ok = results.filter(Boolean).length;
   const total = results.length;
-  console.log(`  Результат: ${ok}/${total} endpoints работают`);
+  console.log(`\n  Результат: ${ok}/${total} endpoints работают`);
   return ok;
 }
 
 async function main() {
   console.log('🔍 Тест: Single Point of Failure — E-Commerce Platform');
-  console.log('   Одна БД, никакой redundancy\n');
+  console.log('   Одна БД, никакой redundancy');
+  console.log('   Flow: заказ (pending) → платёж (500ms) → заказ (paid)\n');
 
   // Phase 1: всё работает
   await testAllEndpoints('Phase 1: БД работает — всё ОК');
@@ -48,10 +54,11 @@ async function main() {
     await testAllEndpoints('Phase 2: БД упала — ПОЛНЫЙ ОТКАЗ');
 
     console.log('\n💀 Все операции мертвы:');
-    console.log('   - Клиенты не могут искать товары');
-    console.log('   - Клиенты не могут покупать');
+    console.log('   - Каталог недоступен — клиенты не видят товары');
+    console.log('   - Покупка невозможна — деньги не принимаются');
+    console.log('   - История заказов/платежей пропала');
     console.log('   - Бизнес теряет деньги каждую секунду');
-    console.log('\n   Single Point of Failure = одна БД, один сервер, ноль redundancy');
+    console.log('\n   SPOF = одна БД, один сервер, ноль redundancy');
   }
 }
 
