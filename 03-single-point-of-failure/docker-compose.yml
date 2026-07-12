@@ -7,8 +7,27 @@ services:
       POSTGRES_PASSWORD: admin
     ports:
       - '5432:5432'
+    command: postgres -c wal_level=replica -c max_wal_senders=3 -c hot_standby=on
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./postgres/init-primary.sh:/docker-entrypoint-initdb.d/init-primary.sh
+
+  postgres_replica:
+    image: postgres:16-alpine
+    user: postgres
+    environment:
+      POSTGRES_DB: ecommerce
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      PGPASSWORD: admin
+    ports:
+      - '5433:5432'
+    entrypoint: /entrypoint-replica.sh
+    volumes:
+      - pgdata_replica:/var/lib/postgresql/data
+      - ./postgres/init-replica.sh:/entrypoint-replica.sh
+    depends_on:
+      - postgres
 
   api:
     build: .
@@ -25,3 +44,4 @@ services:
 
 volumes:
   pgdata:
+  pgdata_replica:
