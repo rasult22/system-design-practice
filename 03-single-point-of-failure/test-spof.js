@@ -37,23 +37,64 @@ async function testAllEndpoints(phase) {
   return ok;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function main() {
+  const mode = process.argv[2];
+
+  if (mode === 'failover') {
+    console.log('🔍 Тест: Failover — Primary упал, replica берёт на себя');
+    console.log('   Replication + HAProxy + auto-failover\n');
+
+    console.log('--- Phase 1: Всё работает через primary ---');
+    await testAllEndpoints('Primary жив');
+
+    console.log('\n⏳ Останавливаем primary...');
+    const { execSync } = require('child_process');
+    execSync('docker compose stop postgres', { stdio: 'inherit' });
+
+    console.log('\n⏳ Ждём автоматический failover (8 сек)...');
+    await sleep(8000);
+
+    // Первый запрос сбрасывает мёртвые соединения из pool
+    console.log('\n--- Phase 2: Сброс мёртвых соединений из pool ---');
+    await request('GET  /products  (сброс pool)', `${BASE}/products`);
+    await sleep(3000);
+
+    console.log('\n--- Phase 3: Primary мёртв, replica промоучена ---');
+    const ok = await testAllEndpoints('После failover');
+
+    console.log('\n--- Итог ---');
+    if (ok >= 3) {
+      console.log('✅ Failover успешен! Reads + writes работают через промоученную replica');
+      console.log('   Primary упал → failover-monitor промоутил replica (~2-4 сек)');
+      console.log('   HAProxy переключил трафик → pool сбросил мёртвые соединения');
+      if (ok === 3) {
+        console.log('   POST вернул 500 — вероятно 30% шанс отказа платежа (не failover)');
+      }
+    } else {
+      console.log('❌ Failover не сработал');
+    }
+    return;
+  }
+
+  // Дефолт: демо проблемы (без replication)
   console.log('🔍 Тест: Single Point of Failure — E-Commerce Platform');
   console.log('   Одна БД, никакой redundancy');
   console.log('   Flow: заказ (pending) → платёж (500ms) → заказ (paid)\n');
 
-  // Phase 1: всё работает
   await testAllEndpoints('Phase 1: БД работает — всё ОК');
 
   console.log('\n⚠️  Теперь останови БД:');
   console.log('   docker compose stop postgres\n');
   console.log('   Затем запусти: node test-spof.js down\n');
 
-  if (process.argv[2] === 'down') {
-    // Phase 2: БД упала
-    await testAllEndpoints('Phase 2: БД упала — ПОЛНЫЙ ОТКАЗ');
+  if (mode === 'down') {
+    await testAllEndpoints('Phase 2: БД упала — без failover');
 
-    console.log('\n💀 Все операции мертвы:');
+    console.log('\n💀 Без replication — полный отказ:');
     console.log('   - Каталог недоступен — клиенты не видят товары');
     console.log('   - Покупка невозможна — деньги не принимаются');
     console.log('   - История заказов/платежей пропала');
