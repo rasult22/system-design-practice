@@ -13,7 +13,7 @@
 |---|------|--------|
 | 1 | Read-Heavy System | ✅ Готово |
 | 2 | High-Write Traffic | ✅ Готово |
-| 3 | Single Point of Failure | ⬜ |
+| 3 | Single Point of Failure | ✅ Готово |
 | 4 | High Availability | ⬜ |
 | 5 | High Latency | ⬜ |
 | 6 | Handling Large Files | ⬜ |
@@ -120,3 +120,64 @@ POST кидает событие в RabbitMQ → мгновенный ответ
 - `@nestjs/microservices` + `amqplib` — интеграция с RabbitMQ
 - `@clickhouse/client` — интеграция с ClickHouse
 - Кастомный `load-test.js` — нагрузочное тестирование с замером read latency под нагрузкой
+
+---
+
+## 3. Single Point of Failure ✅
+
+**Сценарий:** E-commerce платформа — каталог товаров, заказы, платежи. Одна БД, один сервер. БД упала → всё мертво, бизнес теряет деньги.
+
+### Проблема
+
+Все операции завязаны на одну PostgreSQL. При падении БД:
+- 0/4 endpoints работают (каталог, заказы, платежи, покупка)
+- Таймауты 3-8 секунд, потом 500 ошибки
+- Ни поиск, ни покупки — полный отказ
+
+### Решение — Replication + HAProxy + Auto-Failover
+
+**1. PostgreSQL Streaming Replication (async)**
+- Primary пишет в WAL (Write-Ahead Log), replica стримит WAL в реальном времени
+- `wal_level=replica`, `max_wal_senders=3`, `hot_standby=on`
+- `pg_basebackup -R` — копирует данные и создаёт `standby.signal` + `primary_conninfo`
+
+**2. HAProxy — TCP load balancer**
+- Сидит между API и базами, роутит трафик на текущий primary
+- HTTP health-check (Python sidecar на порту 8008): `pg_is_in_recovery()` = `f` → 200 (primary), `t` → 503 (replica)
+- Динамический роутинг: обе ноды равноправны, кто ответил 200 — получает трафик
+
+**3. Failover Monitor**
+- Каждые 2 секунды проверяет все ноды
+- Primary упал → автоматически промоутит replica через `pg_promote()`
+- Детектит split-brain (два primary одновременно)
+
+**Результат после failover:**
+- Primary убит → replica промоучена автоматически (~10-15 сек)
+- 4/4 endpoints работают (reads + writes)
+- Данные сохранены (async replication — возможна потеря последних мс транзакций)
+
+### Что узнали
+
+- **WAL (Write-Ahead Log)** — все изменения сначала в лог, потом на диск. Используется для crash recovery и replication
+- **Async vs Sync replication** — async быстрее но может потерять данные при крэше; sync гарантирует но тормозит writes
+- **hot_standby** — разрешает read-запросы на replica (без него replica только принимает WAL)
+- **pg_is_in_recovery()** — `f` на primary, `t` на replica. Используется для health-check
+- **pg_promote()** — переводит replica в primary (начинает принимать writes)
+- **Split-brain** — два primary одновременно = данные расходятся. В production решается через distributed consensus (etcd + Patroni)
+- **Connection pool** — при failover мёртвые TCP-соединения висят в pool, нужен `idleTimeoutMillis` для автоматического сброса
+- **Database transaction** — атомарность операций (всё или ничего), но не решает availability — если БД целиком мертва, писать некуда
+- **HAProxy health-check** — динамически определяет кто primary, роли могут меняться после failover
+
+### Нерешённые проблемы
+
+- **Автоматическая перестройка** старого primary в replica при возвращении (нужен Patroni / pg_auto_failover)
+- **Split-brain окно** — несколько секунд между возвратом старого primary и детекцией
+- **Connection pool drain** — первые запросы после failover могут получить ошибку
+
+### Стек
+
+- NestJS + TypeORM + PostgreSQL (primary + replica)
+- HAProxy 2.9 — TCP load balancer с HTTP health-check
+- Python health-check sidecar (pg_is_in_recovery)
+- Bash failover-monitor (detect + promote + split-brain detection)
+- Docker Compose (8 сервисов)

@@ -12,6 +12,16 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./postgres/init-primary.sh:/docker-entrypoint-initdb.d/init-primary.sh
 
+  healthcheck-pg1:
+    build:
+      context: ./postgres
+      dockerfile: Dockerfile.healthcheck
+    environment:
+      PGPASSWORD: admin
+    network_mode: "service:postgres"
+    depends_on:
+      - postgres
+
   postgres_replica:
     image: postgres:16-alpine
     user: postgres
@@ -29,6 +39,16 @@ services:
     depends_on:
       - postgres
 
+  healthcheck-pg2:
+    build:
+      context: ./postgres
+      dockerfile: Dockerfile.healthcheck
+    environment:
+      PGPASSWORD: admin
+    network_mode: "service:postgres_replica"
+    depends_on:
+      - postgres_replica
+
   haproxy:
     image: haproxy:2.9-alpine
     ports:
@@ -38,7 +58,7 @@ services:
     depends_on:
       - postgres
       - postgres_replica
-  
+
   failover-monitor:
     image: postgres:16-alpine
     entrypoint: /failover.sh
@@ -49,7 +69,7 @@ services:
     depends_on:
       - postgres
       - postgres_replica
-  
+
   api:
     build: .
     ports:

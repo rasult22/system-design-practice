@@ -55,8 +55,9 @@ async function main() {
     const { execSync } = require('child_process');
     execSync('docker compose stop postgres', { stdio: 'inherit' });
 
-    console.log('\n⏳ Ждём автоматический failover (8 сек)...');
-    await sleep(8000);
+    console.log('\n⏳ Ждём автоматический failover (15 сек)...');
+    console.log('   detect (~4s) + promote (~2s) + healthcheck update (~2s) + HAProxy switch (~2s)');
+    await sleep(15000);
 
     // Первый запрос сбрасывает мёртвые соединения из pool
     console.log('\n--- Phase 2: Сброс мёртвых соединений из pool ---');
