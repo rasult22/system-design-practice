@@ -16,7 +16,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
       entities: [Url],
       synchronize: true,
       retryAttempts: 30,
-      retryDelay: 3000
+      retryDelay: 3000,
+      extra: {
+        connectionTimeoutMillis: 5000
+      }
     }),
     UrlsModule,
   ],
