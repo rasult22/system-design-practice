@@ -1,7 +1,14 @@
-import { Body, Controller, Get, NotFoundException, Param, Post, Res } from "@nestjs/common";
-import type { Response } from "express";
-import { UrlsService } from "./urls.service";
-import { url } from "inspector";
+import {
+  Body,
+  Controller,
+  Get,
+  NotFoundException,
+  Param,
+  Post,
+  Res,
+} from '@nestjs/common';
+import type { Response } from 'express';
+import { UrlsService } from './urls.service';
 
 @Controller()
 export class UrlsController {
@@ -12,8 +19,14 @@ export class UrlsController {
     const result = await this.urlService.shorten(url);
     return {
       code: result.code,
-      shortUrl: `/${result.code}`
-    }
+      shortUrl: `/${result.code}`,
+      server: process.env.HOSTNAME
+    };
+  }
+
+  @Get('health')
+  health() {
+    return { status: 'ok', server: process.env.HOSTNAME };
   }
 
   @Get(':code')

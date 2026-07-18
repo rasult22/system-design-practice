@@ -14,7 +14,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
       password: process.env.DB_PASS || 'postgres',
       database: process.env.DB_NAME || 'urlshortener',
       entities: [Url],
-      synchronize: true
+      synchronize: true,
+      retryAttempts: 30,
+      retryDelay: 3000
     }),
     UrlsModule,
   ],
