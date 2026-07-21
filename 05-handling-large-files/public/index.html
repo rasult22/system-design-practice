@@ -44,7 +44,7 @@
       const files = await res.json();
       const list = document.getElementById('fileList');
       list.innerHTML = files.map(f =>
-        `<li><span>${f}</span><a href="/files/${f}" download>Download</a></li>`
+        `<li><span>${f}</span><a href="/files/${f}" target="_blank">Download</a></li>`
       ).join('');
     }
 
