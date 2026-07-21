@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>File Exchange</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; }
+    h1 { margin-bottom: 30px; }
+    .upload-section, .files-section { margin-bottom: 30px; }
+    input[type="file"] { margin-right: 10px; }
+    button { padding: 6px 16px; cursor: pointer; }
+    .progress { margin-top: 10px; display: none; }
+    .progress-bar { width: 100%; height: 20px; background: #eee; border-radius: 4px; overflow: hidden; }
+    .progress-fill { height: 100%; background: #4caf50; transition: width 0.2s; }
+    .file-list { list-style: none; padding: 0; }
+    .file-list li { padding: 8px 0; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; }
+    .file-list a { color: #1976d2; text-decoration: none; }
+    .file-list a:hover { text-decoration: underline; }
+    .status { margin-top: 8px; font-size: 14px; color: #666; }
+  </style>
+</head>
+<body>
+  <h1>File Exchange</h1>
+
+  <div class="upload-section">
+    <h2>Upload</h2>
+    <input type="file" id="fileInput">
+    <button onclick="uploadFile()">Upload</button>
+    <div class="progress" id="progress">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="status" id="status"></div>
+    </div>
+  </div>
+
+  <div class="files-section">
+    <h2>Files</h2>
+    <ul class="file-list" id="fileList"></ul>
+  </div>
+
+  <script>
+    async function loadFiles() {
+      const res = await fetch('/files');
+      const files = await res.json();
+      const list = document.getElementById('fileList');
+      list.innerHTML = files.map(f =>
+        `<li><span>${f}</span><a href="/files/${f}" download>Download</a></li>`
+      ).join('');
+    }
+
+    async function uploadFile() {
+      const input = document.getElementById('fileInput');
+      const file = input.files[0];
+      if (!file) return alert('Select a file');
+
+      const progress = document.getElementById('progress');
+      const fill = document.getElementById('progressFill');
+      const status = document.getElementById('status');
+      progress.style.display = 'block';
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/files/upload');
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          fill.style.width = pct + '%';
+          status.textContent = `${pct}% (${(e.loaded / 1024 / 1024).toFixed(1)} / ${(e.total / 1024 / 1024).toFixed(1)} MB)`;
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status === 201 || xhr.status === 200) {
+          status.textContent = 'Done!';
+          loadFiles();
+        } else {
+          status.textContent = 'Error: ' + xhr.statusText;
+        }
+      };
+
+      xhr.onerror = () => { status.textContent = 'Upload failed'; };
+
+      xhr.send(file);
+    }
+
+    loadFiles();
+  </script>
+</body>
+</html>
