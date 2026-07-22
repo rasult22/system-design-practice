@@ -45,6 +45,13 @@ export class FilesController {
     await this.filesService.completeMultipartUpload(filename, uploadId, body.parts);
     return { filename, message: 'upload complete' }
   }
+  @Get('multipart/:filename/:uploadId/parts')
+  async listParts(
+    @Param('filename') filename: string,
+    @Param('uploadId') uploadId: string,
+  ) {
+    return this.filesService.listParts(filename, uploadId);
+  }
 
   @Post('multipart/:filename/:uploadId/:partNumber')
   async uploadPart(

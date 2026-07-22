@@ -13,11 +13,15 @@
     .progress { margin-top: 10px; display: none; }
     .progress-bar { width: 100%; height: 20px; background: #eee; border-radius: 4px; overflow: hidden; }
     .progress-fill { height: 100%; background: #4caf50; transition: width 0.2s; }
+    .progress-fill.paused { background: #ff9800; }
     .file-list { list-style: none; padding: 0; }
     .file-list li { padding: 8px 0; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; }
     .file-list a { color: #1976d2; text-decoration: none; }
     .file-list a:hover { text-decoration: underline; }
     .status { margin-top: 8px; font-size: 14px; color: #666; }
+    .status.error { color: #d32f2f; }
+    .retry-btn { display: none; margin-top: 8px; padding: 6px 16px; background: #ff9800; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    .retry-btn:hover { background: #f57c00; }
   </style>
 </head>
 <body>
@@ -26,10 +30,11 @@
   <div class="upload-section">
     <h2>Upload</h2>
     <input type="file" id="fileInput">
-    <button onclick="uploadFile()">Upload</button>
+    <button onclick="uploadFile()" id="uploadBtn">Upload</button>
     <div class="progress" id="progress">
       <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
       <div class="status" id="status"></div>
+      <button class="retry-btn" id="retryBtn" onclick="uploadFile()">Resume upload</button>
     </div>
   </div>
 
@@ -50,6 +55,44 @@
       ).join('');
     }
 
+    function getUploadState(fileName) {
+      const raw = localStorage.getItem('upload_' + fileName);
+      return raw ? JSON.parse(raw) : null;
+    }
+
+    function saveUploadState(fileName, state) {
+      localStorage.setItem('upload_' + fileName, JSON.stringify(state));
+    }
+
+    function clearUploadState(fileName) {
+      localStorage.removeItem('upload_' + fileName);
+    }
+
+    function showError(message) {
+      const fill = document.getElementById('progressFill');
+      const status = document.getElementById('status');
+      const retryBtn = document.getElementById('retryBtn');
+      const uploadBtn = document.getElementById('uploadBtn');
+
+      fill.classList.add('paused');
+      status.textContent = message;
+      status.classList.add('error');
+      retryBtn.style.display = 'inline-block';
+      uploadBtn.disabled = false;
+    }
+
+    function resetUI() {
+      const fill = document.getElementById('progressFill');
+      const status = document.getElementById('status');
+      const retryBtn = document.getElementById('retryBtn');
+      const uploadBtn = document.getElementById('uploadBtn');
+
+      fill.classList.remove('paused');
+      status.classList.remove('error');
+      retryBtn.style.display = 'none';
+      uploadBtn.disabled = true;
+    }
+
     async function uploadFile() {
       const input = document.getElementById('fileInput');
       const file = input.files[0];
@@ -59,43 +102,90 @@
       const fill = document.getElementById('progressFill');
       const status = document.getElementById('status');
       progress.style.display = 'block';
-      fill.style.width = '0%';
+      resetUI();
 
       const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+      let filename, uploadId, parts = [];
+      let uploadedParts = new Set();
 
-      // 1. Start multipart upload
-      status.textContent = 'Starting upload...';
-      const startRes = await fetch('/files/multipart/start', { method: 'POST', headers: {'X-Filename': encodeURIComponent(file.name)} });
-      const { filename, uploadId } = await startRes.json();
+      const saved = getUploadState(file.name);
+      if (saved) {
+        filename = saved.filename;
+        uploadId = saved.uploadId;
+        parts = saved.parts;
 
-      // 2. Upload chunks
-      const parts = [];
+        status.textContent = 'Resuming upload...';
+        try {
+          const partsRes = await fetch(`/files/multipart/${filename}/${uploadId}/parts`);
+          const existingParts = await partsRes.json();
+          uploadedParts = new Set(existingParts);
+
+          const pct = Math.round((uploadedParts.size / totalChunks) * 100);
+          fill.style.width = pct + '%';
+          status.textContent = `Resuming — ${uploadedParts.size}/${totalChunks} chunks already uploaded`;
+        } catch {
+          showError(`Connection failed — ${parts.length} chunks saved locally. Retry when server is back.`);
+          return;
+        }
+      } else {
+        status.textContent = 'Starting upload...';
+        try {
+          const startRes = await fetch('/files/multipart/start', {
+            method: 'POST',
+            headers: { 'X-Filename': encodeURIComponent(file.name) },
+          });
+          ({ filename, uploadId } = await startRes.json());
+          saveUploadState(file.name, { filename, uploadId, parts: [] });
+        } catch {
+          showError('Connection failed — could not start upload.');
+          return;
+        }
+      }
+
       for (let i = 0; i < totalChunks; i++) {
+        const partNumber = i + 1;
+        if (uploadedParts.has(partNumber)) continue;
+
         const start = i * CHUNK_SIZE;
         const end = Math.min(start + CHUNK_SIZE, file.size);
         const chunk = file.slice(start, end);
 
-        const partRes = await fetch(`/files/multipart/${filename}/${uploadId}/${i + 1}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/octet-stream' },
-          body: chunk,
-        });
-        const part = await partRes.json();
-        parts.push(part);
+        try {
+          const partRes = await fetch(`/files/multipart/${filename}/${uploadId}/${partNumber}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: chunk,
+          });
+          const part = await partRes.json();
+          parts.push(part);
+          saveUploadState(file.name, { filename, uploadId, parts });
+        } catch {
+          showError(`Upload paused at chunk ${uploadedParts.size}/${totalChunks} — connection lost.`);
+          return;
+        }
 
-        const pct = Math.round(((i + 1) / totalChunks) * 100);
+        uploadedParts.add(partNumber);
+        const done = uploadedParts.size;
+        const pct = Math.round((done / totalChunks) * 100);
         fill.style.width = pct + '%';
-        status.textContent = `${pct}% — chunk ${i + 1}/${totalChunks} (${(end / 1024 / 1024).toFixed(1)} / ${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+        status.textContent = `${pct}% — chunk ${done}/${totalChunks} (${(end / 1024 / 1024).toFixed(1)} / ${(file.size / 1024 / 1024).toFixed(1)} MB)`;
       }
 
-      // 3. Complete
-      await fetch(`/files/multipart/${filename}/${uploadId}/complete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ parts }),
-      });
+      try {
+        await fetch(`/files/multipart/${filename}/${uploadId}/complete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ parts }),
+        });
+      } catch {
+        showError('Upload paused before completion — all chunks uploaded. Retry to finalize.');
+        return;
+      }
 
+      clearUploadState(file.name);
+      fill.style.background = '#4caf50';
       status.textContent = 'Done!';
+      document.getElementById('uploadBtn').disabled = false;
       loadFiles();
     }
 

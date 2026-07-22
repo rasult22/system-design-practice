@@ -76,4 +76,14 @@ export class FilesService {
       },
     }))
   }
+
+  async listParts(key: string, uploadId: string) {
+    const { ListPartsCommand } = await import('@aws-sdk/client-s3')
+    const result = await this.s3.send(new ListPartsCommand({
+      Bucket: this.bucket,
+      Key: key,
+      UploadId: uploadId
+    }));
+    return result.Parts?.map(p => p.PartNumber) ?? []
+  }
 }
