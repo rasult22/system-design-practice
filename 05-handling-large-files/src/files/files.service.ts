@@ -41,4 +41,39 @@ export class FilesService {
     })
     return keys
   }
+
+  async startMultipartUpload(key: string): Promise<string> {
+    const { CreateMultipartUploadCommand } = await import('@aws-sdk/client-s3');
+    const result = await this.s3.send(new CreateMultipartUploadCommand({
+      Bucket: this.bucket,
+      Key: key
+    }));
+    return result.UploadId!;
+  }
+
+  async uploadPart(key: string, uploadId: string, partNumber: number, body: Readable, size: number) {
+    const { UploadPartCommand } = await import('@aws-sdk/client-s3');
+    const result = await this.s3.send(new UploadPartCommand({
+      Bucket: this.bucket,
+      Key: key,
+      UploadId: uploadId,
+      PartNumber: partNumber,
+      Body: body,
+      ContentLength: size
+    }))
+
+    return { partNumber, etag: result.ETag!.replace(/"/g, '')};
+  }
+
+  async completeMultipartUpload(key: string, uploadId: string, parts: { partNumber: number; etag: string }[]) {
+    const { CompleteMultipartUploadCommand } = await import('@aws-sdk/client-s3');
+    await this.s3.send(new CompleteMultipartUploadCommand({
+      Bucket: this.bucket,
+      Key: key,
+      UploadId: uploadId,
+      MultipartUpload: {
+        Parts: parts.map(p => ({ PartNumber: p.partNumber, ETag: p.etag })),
+      },
+    }))
+  }
 }

@@ -39,6 +39,8 @@
   </div>
 
   <script>
+    const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
+
     async function loadFiles() {
       const res = await fetch('/files');
       const files = await res.json();
@@ -57,31 +59,44 @@
       const fill = document.getElementById('progressFill');
       const status = document.getElementById('status');
       progress.style.display = 'block';
+      fill.style.width = '0%';
 
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/files/upload');
-      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const pct = Math.round((e.loaded / e.total) * 100);
-          fill.style.width = pct + '%';
-          status.textContent = `${pct}% (${(e.loaded / 1024 / 1024).toFixed(1)} / ${(e.total / 1024 / 1024).toFixed(1)} MB)`;
-        }
-      };
+      // 1. Start multipart upload
+      status.textContent = 'Starting upload...';
+      const startRes = await fetch('/files/multipart/start', { method: 'POST', headers: {'X-Filename': encodeURIComponent(file.name)} });
+      const { filename, uploadId } = await startRes.json();
 
-      xhr.onload = () => {
-        if (xhr.status === 201 || xhr.status === 200) {
-          status.textContent = 'Done!';
-          loadFiles();
-        } else {
-          status.textContent = 'Error: ' + xhr.statusText;
-        }
-      };
+      // 2. Upload chunks
+      const parts = [];
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, file.size);
+        const chunk = file.slice(start, end);
 
-      xhr.onerror = () => { status.textContent = 'Upload failed'; };
+        const partRes = await fetch(`/files/multipart/${filename}/${uploadId}/${i + 1}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: chunk,
+        });
+        const part = await partRes.json();
+        parts.push(part);
 
-      xhr.send(file);
+        const pct = Math.round(((i + 1) / totalChunks) * 100);
+        fill.style.width = pct + '%';
+        status.textContent = `${pct}% — chunk ${i + 1}/${totalChunks} (${(end / 1024 / 1024).toFixed(1)} / ${(file.size / 1024 / 1024).toFixed(1)} MB)`;
+      }
+
+      // 3. Complete
+      await fetch(`/files/multipart/${filename}/${uploadId}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parts }),
+      });
+
+      status.textContent = 'Done!';
+      loadFiles();
     }
 
     loadFiles();

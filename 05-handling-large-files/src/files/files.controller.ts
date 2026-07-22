@@ -1,14 +1,8 @@
-import { Controller, Get, Param, Post, Req, Res,} from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req, Res,} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import type { Response, Request } from 'express';
-import { createReadStream, createWriteStream } from 'fs';
-import { mkdir, readdir } from 'fs/promises';
-import { join } from 'path';
 import { Readable } from 'stream';
-import { pipeline } from 'stream/promises';
 import { FilesService } from './files.service';
-
-
 
 @Controller('files')
 export class FilesController {
@@ -32,5 +26,37 @@ export class FilesController {
   async download(@Param('filename') filename: string, @Res() res: Response ) {
     const url = await this.filesService.getDownloadUrl(filename);
     res.redirect(url)
+  }
+
+  @Post('multipart/start')
+  async startUpload(@Req() req: Request) {
+    const incomingFilename = decodeURIComponent(req.headers['x-filename'] as string)
+    const filename =  `${randomUUID()}_${incomingFilename}`;
+    const uploadId = await this.filesService.startMultipartUpload(filename);
+    return { filename, uploadId }
+  }
+
+  @Post('multipart/:filename/:uploadId/complete')
+  async completeUpload(
+    @Param('filename') filename: string,
+    @Param('uploadId') uploadId: string,
+    @Body() body: { parts: { partNumber: number, etag: string }[] }
+  ) {
+    await this.filesService.completeMultipartUpload(filename, uploadId, body.parts);
+    return { filename, message: 'upload complete' }
+  }
+
+  @Post('multipart/:filename/:uploadId/:partNumber')
+  async uploadPart(
+    @Param('filename') filename: string,
+    @Param('uploadId') uploadId: string,
+    @Param('partNumber') partNumber: string,
+    @Req() req: Request,
+  ) {
+    const size = parseInt(req.headers['content-length'] ?? '0', 10);
+    const result = await this.filesService.uploadPart(
+      filename, uploadId, parseInt(partNumber, 10), req as unknown as Readable, size,
+    );
+    return result;
   }
 }
