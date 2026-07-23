@@ -1,0 +1,83 @@
+services:
+  # === ETCD - distributed consensus для Patroni ===
+  etcd: 
+    image: quay.io/coreos/etcd:v3.5.17
+    environment:
+      ETCD_LISTEN_CLIENT_URLS: "http://0.0.0.0:2379"
+      ETCD_ADVERTISE_CLIENT_URLS: "http://etcd:2379"
+      ETCD_LISTEN_PEER_URLS: "http://0.0.0.0:2380"
+      ETCD_INITIAL_ADVERTISE_PEER_URLS: "http://etcd:2380"
+      ETCD_INITIAL_CLUSTER: "etcd=http://etcd:2380"
+      ETCD_NAME: etcd
+  
+  # === PostgreSQL + Patroni (3 узла) ===
+  pg1:
+    build: ./patroni
+    ports:
+      - "8008:8008"
+    environment: 
+      PATRONI_NAME: pg1
+    depends_on:
+      - etcd
+  
+  pg2:
+    build: ./patroni
+    ports:
+      - "8009:8008"
+    environment:
+      PATRONI_NAME: pg2
+    depends_on:
+      - etcd
+
+  pg3:
+    build: ./patroni
+    ports:
+      - "8010:8008"
+    environment:
+      PATRONI_NAME: pg3
+    depends_on:
+      - etcd
+
+  # === HAProxy - балансер для бэков и БД ===
+  haproxy:
+    image: haproxy:2.9
+    ports:
+      - "3000:3000"
+      - "5432:5432"
+      - "8404:8404"
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    depends_on:
+      - app1
+      - app2
+      - app3
+      - pg1
+      - pg2
+      - pg3
+
+  
+  # === App (3 экземпляра) ===
+  app1:
+    build: ./url-shortener
+    hostname: app1
+    environment: &app-env
+      DB_HOST: haproxy
+      DB_PORT: "5432"
+      DB_USER: app
+      DB_PASS: app
+      DB_NAME: urlshortener
+      PORT: "3000"
+    depends_on:
+      - pg1
+  
+  app2:
+    build: ./url-shortener
+    hostname: app2
+    environment:
+      <<: *app-env
+  
+  app3:
+    build: ./url-shortener
+    hostname: app3
+    environment:
+      <<: *app-env
