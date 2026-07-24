@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { UrlsModule } from './urls/urls.module';
 import { Url } from './urls/url.entity';
 import { TypeOrmModule } from '@nestjs/typeorm';
-
+import { MetricsModule } from './metrics/metrics.module';
 
 @Module({
   imports: [
@@ -21,7 +21,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
         connectionTimeoutMillis: 5000
       }
     }),
-    UrlsModule,
+    MetricsModule,
+    UrlsModule
   ],
 })
 export class AppModule {}

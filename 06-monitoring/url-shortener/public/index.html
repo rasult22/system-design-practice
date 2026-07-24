@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>URL Shortener</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .container { width: 100%; max-width: 600px; padding: 2rem; }
+    h1 { font-size: 1.5rem; margin-bottom: 1.5rem; }
+    .form { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+    input { flex: 1; padding: 0.75rem 1rem; border: 1px solid #334155; border-radius: 8px; background: #1e293b; color: #e2e8f0; font-size: 1rem; outline: none; }
+    input:focus { border-color: #3b82f6; }
+    button { padding: 0.75rem 1.5rem; border: none; border-radius: 8px; background: #3b82f6; color: #fff; font-size: 1rem; cursor: pointer; white-space: nowrap; }
+    button:hover { background: #2563eb; }
+    .result { padding: 1rem; background: #1e293b; border-radius: 8px; border: 1px solid #334155; display: none; }
+    .result.show { display: block; }
+    .result a { color: #60a5fa; text-decoration: none; }
+    .result a:hover { text-decoration: underline; }
+    .server { color: #94a3b8; font-size: 0.85rem; margin-top: 0.5rem; }
+    .error { color: #f87171; }
+    .history { margin-top: 2rem; }
+    .history h2 { font-size: 1.1rem; margin-bottom: 0.75rem; color: #94a3b8; }
+    .history-item { padding: 0.5rem 0; border-bottom: 1px solid #1e293b; font-size: 0.9rem; display: flex; justify-content: space-between; align-items: center; }
+    .history-item a { color: #60a5fa; text-decoration: none; }
+    .original { color: #64748b; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>URL Shortener</h1>
+    <div class="form">
+      <input type="url" id="url" placeholder="https://example.com/very/long/url" />
+      <button onclick="shorten()">Shorten</button>
+    </div>
+    <div class="result" id="result"></div>
+    <div class="history" id="history"></div>
+  </div>
+  <script>
+    const history = [];
+
+    async function shorten() {
+      const input = document.getElementById('url');
+      const result = document.getElementById('result');
+      const url = input.value.trim();
+      if (!url) return;
+
+      result.className = 'result show';
+      result.innerHTML = 'Shortening...';
+
+      try {
+        const res = await fetch('/shorten', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+        const data = await res.json();
+        const short = `${location.origin}${data.shortUrl}`;
+        result.innerHTML = `
+          <a href="${short}" target="_blank">${short}</a>
+          <div class="server">served by ${data.server}</div>
+        `;
+        history.unshift({ short, original: url, server: data.server });
+        input.value = '';
+        renderHistory();
+      } catch (e) {
+        result.innerHTML = `<span class="error">Error: ${e.message}</span>`;
+      }
+    }
+
+    function renderHistory() {
+      const el = document.getElementById('history');
+      if (!history.length) { el.innerHTML = ''; return; }
+      el.innerHTML = `<h2>History</h2>` + history.map(h =>
+        `<div class="history-item">
+          <a href="${h.short}" target="_blank">${h.short}</a>
+          <span class="original" title="${h.original}">${h.original}</span>
+        </div>`
+      ).join('');
+    }
+
+    document.getElementById('url').addEventListener('keydown', e => {
+      if (e.key === 'Enter') shorten();
+    });
+  </script>
+</body>
+</html>
